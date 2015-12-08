@@ -33,8 +33,8 @@ require_once($CFG->dirroot . '/mod/assign/locallib.php');
 
 $endpoint = 'http://localhost/learninglocker/public/data/xAPI/';
 $version = '1.0.1';
-$username = 'eb01a6631cda018f64beec8c473ad8e65fc01cc2';
-$password = '3330d7329edec73f2b544d5541b1016da91ab091';
+$username = 'a78d196704728fe4ccb7984fa5f33632fdc7b827';
+$password = '9e2b84b22076bce3269c517bf45c7abc313a3cbe';
 
 $batchsize = 20;
 
@@ -50,6 +50,11 @@ echo "xAPI versions: " . implode(', ', $about->content->getVersion()) . "\n";
 
 // Can't use autoloading on old Moodle versions
 
+/**
+ * Modified controller that will create a statement without pushing it to the LRS.
+ *
+ * This is to enable pushing batches of statements.
+ */
 class BatchController extends xapi_controller {
 
     /**
@@ -72,8 +77,12 @@ class BatchController extends xapi_controller {
 
 }
 
+/**
+ * Generator for xAPI statements from simple event data.
+ */
 class StatementGenerator {
 
+    protected $lrs;
     protected $moodlecontroller;
     protected $translatorcontroller;
     protected $xapicontroller;
@@ -85,6 +94,7 @@ class StatementGenerator {
      */
     public function __construct(LRSInterface $lrs) {
         global $DB, $CFG;
+        $this->lrs = $lrs;
         // Initialise repositories
         $this->moodlecontroller = new moodle_controller(new moodle_repository($DB, $CFG));
         $this->translatorcontroller = new translator_controller();
@@ -114,176 +124,120 @@ class StatementGenerator {
 
     }
 
+    public function processBatches($select, $callback, $batchsize = 5000) {
+        global $DB;
+
+        $start = 0;
+        while($batch = $DB->get_records_select('log', $select, array(), '', '*', $start, $batchsize)) {
+            $statements = array();
+
+            foreach ($batch as $id => $logrecord) {
+
+                if ($event = $callback($logrecord)) {
+                    if ($statement = $this->generateStatement($event)) {
+                        $statements[] = $statement;
+                    }
+                }
+
+            }
+
+            echo "Sending statements $start to " . ($start + count($batch) - 1) . "\n";
+            echo "Statement count: " . count($statements) . "\n";
+
+            // Send statements as a batch
+            $result = $this->lrs->saveStatements($statements);
+
+            $start += count($batch);
+        }
+    }
+
 }
 
 $gen = new StatementGenerator($lrs);
 
 // UserLoggedIn recipe
 echo "Processing UserLoggedIn events\n";
-$start = 0;
-while($batch = $DB->get_records('log', array('module' => 'user', 'action' => 'login'), '', '*', $start, $batchsize)) {
-    $statements = array();
-    foreach ($batch as $id => $logrecord) {
-
-        $event = array('eventname' => '\core\event\user_loggedin');
-        $event['userid'] = $logrecord->userid;
-        $event['relateduserid'] = null;
-        $event['courseid'] = 1; // Should be $logrecord->courseid;
-        $event['timecreated'] = $logrecord->time;
-
-        if ($statement = $gen->generateStatement($event)) {
-            $statements[] = $statement;
-        }
-    }
-
-    echo "Sending statements $start to " . ($start + count($batch) - 1) . "\n";
-    echo "Statement count: " . count($statements) . "\n";
-
-    // Send statements as a batch
-    $result = $lrs->saveStatements($statements);
-
-    $start += count($batch);
-}
+$gen->processBatches("module = 'user' AND action = 'login'", function($logrecord) {
+    $event = array('eventname' => '\core\event\user_loggedin');
+    $event['userid'] = $logrecord->userid;
+    $event['relateduserid'] = null;
+    $event['courseid'] = 1; // Should be $logrecord->courseid;
+    $event['timecreated'] = $logrecord->time;
+    return $event;
+}, $batchsize);
 
 // CourseViewed recipe
 echo "Processing CourseViewed events\n";
-$start = 0;
-while($batch = $DB->get_records('log', array('module' => 'course', 'action' => 'view'), '', '*', $start, $batchsize)) {
-    $statements = array();
-    foreach ($batch as $id => $logrecord) {
-
-        $event = array('eventname' => '\core\event\course_viewed');
-        $event['userid'] = $logrecord->userid;
-        $event['relateduserid'] = null;
-        $event['courseid'] = $logrecord->course;
-        $event['timecreated'] = $logrecord->time;
-
-        if ($statement = $gen->generateStatement($event)) {
-            $statements[] = $statement;
-        }
-    }
-
-    echo "Sending statements $start to " . ($start + count($batch) - 1) . "\n";
-    echo "Statement count: " . count($statements) . "\n";
-
-    // Send statements as a batch
-    $result = $lrs->saveStatements($statements);
-
-    $start += count($batch);
-}
+$gen->processBatches("module = 'course' AND action = 'view'", function($logrecord) {
+    $event = array('eventname' => '\core\event\course_viewed');
+    $event['userid'] = $logrecord->userid;
+    $event['relateduserid'] = null;
+    $event['courseid'] = $logrecord->course;
+    $event['timecreated'] = $logrecord->time;
+    return $event;
+}, $batchsize);
 
 // ModuleViewed recipe
 echo "Processing ModuleViewed events\n";
-$start = 0;
-// TODO: mod_forum has multiple view actions, e.g. "view forum" - check these
-while($batch = $DB->get_records('log', array('action' => 'view'), '', '*', $start, $batchsize)) {
-    $statements = array();
-    foreach ($batch as $id => $logrecord) {
-
-        // We define a module viewed as a view action with a cmid
-        if (empty($logrecord->cmid)) {
-            continue;
-        }
-
-        $event = array('eventname' => "\\mod_{$logrecord->module}\\event\\course_module_viewed");
-        $event['userid'] = $logrecord->userid;
-        $event['relateduserid'] = null;
-        $event['courseid'] = $logrecord->course;
-        $event['timecreated'] = $logrecord->time;
-
-        $mod = get_fast_modinfo($logrecord->course)->get_cm($logrecord->cmid);
-        $event['objectid'] = $mod->instance;
-        $event['objecttable'] = $mod->modname;
-
-        if ($statement = $gen->generateStatement($event)) {
-            $statements[] = $statement;
-        }
+$gen->processBatches("action = 'view'", function($logrecord) {
+    // We define a module viewed as a view action with a cmid
+    if (empty($logrecord->cmid)) {
+        return;
     }
 
-    echo "Sending statements $start to " . ($start + count($batch) - 1) . "\n";
-    echo "Statement count: " . count($statements) . "\n";
+    $event = array('eventname' => "\\mod_{$logrecord->module}\\event\\course_module_viewed");
+    $event['userid'] = $logrecord->userid;
+    $event['relateduserid'] = null;
+    $event['courseid'] = $logrecord->course;
+    $event['timecreated'] = $logrecord->time;
 
-    // Send statements as a batch
-    $result = $lrs->saveStatements($statements);
-
-    $start += count($batch);
-}
+    $mod = get_fast_modinfo($logrecord->course)->get_cm($logrecord->cmid);
+    $event['objectid'] = $mod->instance;
+    $event['objecttable'] = $mod->modname;
+    return $event;
+}, $batchsize);
 
 // AssignmentSubmitted recipe
 echo "Processing AssignmentSubmitted events\n";
-$start = 0;
-while($batch = $DB->get_records_select('log', "module = 'assign' AND (action = 'submit' OR action = 'submit for grading')", array(), '', '*', $start, $batchsize)) {
-    $statements = array();
+$gen->processBatches("module = 'assign' AND (action = 'submit' OR action = 'submit for grading')", function($logrecord) {
+    $event = array('eventname' => '\mod_assign\event\assessable_submitted');
+    $event['userid'] = $logrecord->userid;
+    $event['relateduserid'] = null;
+    $event['courseid'] = $logrecord->course;
+    $event['timecreated'] = $logrecord->time;
 
-    foreach ($batch as $id => $logrecord) {
+    $courseinfo = get_fast_modinfo($logrecord->course);
+    $mod = $courseinfo->get_cm($logrecord->cmid);
+    $course = $courseinfo->get_course();
 
-        $event = array('eventname' => '\mod_assign\event\assessable_submitted');
-        $event['userid'] = $logrecord->userid;
-        $event['relateduserid'] = null;
-        $event['courseid'] = $logrecord->course;
-        $event['timecreated'] = $logrecord->time;
-
-        $courseinfo = get_fast_modinfo($logrecord->course);
-        $mod = $courseinfo->get_cm($logrecord->cmid);
-        $course = $courseinfo->get_course();
-
-        // We don't have enough info to determine the actual submission
-        // so always get the latest for that assignment
-        $assign = new assign($mod->context, $mod, $course);
-        $submission = $assign->get_user_submission($logrecord->userid, false);
-        $event['objectid'] = $submission->id;
-        $event['objecttable'] = 'assign_submission';
-
-        if ($statement = $gen->generateStatement($event)) {
-            $statements[] = $statement;
-        }
-    }
-
-    echo "Sending statements $start to " . ($start + count($batch) - 1) . "\n";
-    echo "Statement count: " . count($statements) . "\n";
-
-    // Send statements as a batch
-    $result = $lrs->saveStatements($statements);
-
-    $start += count($batch);
-}
+    // We don't have enough info to determine the actual submission
+    // so always get the latest for that assignment
+    $assign = new assign($mod->context, $mod, $course);
+    $submission = $assign->get_user_submission($logrecord->userid, false);
+    $event['objectid'] = $submission->id;
+    $event['objecttable'] = 'assign_submission';
+    return $event;
+}, $batchsize);
 
 // AssignmentGraded recipe
 echo "Processing AssignmentGraded events\n";
-$start = 0;
-while($batch = $DB->get_records('log', array('module' => 'assign', 'action' => 'grade submission'), '', '*', $start, $batchsize)) {
-    $statements = array();
+$gen->processBatches("module = 'assign' AND action = 'grade submission'", function($logrecord) {
+    $event = array('eventname' => '\mod_assign\event\submission_graded');
+    $event['userid'] = $logrecord->userid;
+    $event['relateduserid'] = null;
+    $event['courseid'] = $logrecord->course;
+    $event['timecreated'] = $logrecord->time;
 
-    foreach ($batch as $id => $logrecord) {
+    $courseinfo = get_fast_modinfo($logrecord->course);
+    $mod = $courseinfo->get_cm($logrecord->cmid);
+    $course = $courseinfo->get_course();
 
-        $event = array('eventname' => '\mod_assign\event\submission_graded');
-        $event['userid'] = $logrecord->userid;
-        $event['relateduserid'] = null;
-        $event['courseid'] = $logrecord->course;
-        $event['timecreated'] = $logrecord->time;
+    // We don't have enough info to determine the actual submission
+    // so always get the latest grade for that assignment
+    $assign = new assign($mod->context, $mod, $course);
+    $grade = $assign->get_user_grade($logrecord->userid, false);
 
-        $courseinfo = get_fast_modinfo($logrecord->course);
-        $mod = $courseinfo->get_cm($logrecord->cmid);
-        $course = $courseinfo->get_course();
-
-        // We don't have enough info to determine the actual submission
-        // so always get the latest grade for that assignment
-        $assign = new assign($mod->context, $mod, $course);
-        $grade = $assign->get_user_grade($logrecord->userid, false);
-
-        $event['objectid'] = $grade->id;
-        $event['objecttable'] = 'assign_grades';
-
-        if ($statement = $gen->generateStatement($event)) {
-            $statements[] = $statement;
-        }
-    }
-
-    echo "Sending statements $start to " . ($start + count($batch) - 1) . "\n";
-    echo "Statement count: " . count($statements) . "\n";
-
-    // Send statements as a batch
-    $result = $lrs->saveStatements($statements);
-
-    $start += count($batch);
-}
+    $event['objectid'] = $grade->id;
+    $event['objecttable'] = 'assign_grades';
+    return $event;
+}, $batchsize);
