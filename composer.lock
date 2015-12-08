@@ -1,0 +1,163 @@
+{
+    "_readme": [
+        "This file locks the dependencies of your project to a known state",
+        "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#composer-lock-the-lock-file",
+        "This file is @generated automatically"
+    ],
+    "hash": "c0e735a058926a11ff4f725db048c6fd",
+    "content-hash": "1f03f25918cafc732b3054274cdcea96",
+    "packages": [
+        {
+            "name": "learninglocker/moodle-log-expander",
+            "version": "v0.4.2",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/LearningLocker/Moodle-Log-Expander.git",
+                "reference": "cb1ad50e14370a44891b4301bd73230250584e4f"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/LearningLocker/Moodle-Log-Expander/zipball/cb1ad50e14370a44891b4301bd73230250584e4f",
+                "reference": "cb1ad50e14370a44891b4301bd73230250584e4f",
+                "shasum": ""
+            },
+            "require-dev": {
+                "phpunit/phpunit": "~4.6"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "LogExpander\\": "src/",
+                    "LogExpander\\Tests\\": "tests/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "GPL v3"
+            ],
+            "time": "2015-09-25 10:40:44"
+        },
+        {
+            "name": "learninglocker/moodle-xapi-translator",
+            "version": "v0.4.2",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/LearningLocker/Moodle-xAPI-Translator.git",
+                "reference": "a7a01e0ee134ca02ae17740ba58a732298106091"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/LearningLocker/Moodle-xAPI-Translator/zipball/a7a01e0ee134ca02ae17740ba58a732298106091",
+                "reference": "a7a01e0ee134ca02ae17740ba58a732298106091",
+                "shasum": ""
+            },
+            "require-dev": {
+                "phpunit/phpunit": "~4.6"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "MXTranslator\\": "src/",
+                    "MXTranslator\\Tests\\": "tests/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "GPL v3"
+            ],
+            "time": "2015-10-23 14:05:36"
+        },
+        {
+            "name": "learninglocker/xapi-recipe-emitter",
+            "version": "v0.4.4",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/LearningLocker/xAPI-Recipe-Emitter.git",
+                "reference": "1c8d9474d9214a7b195686e47ddb2b5a553592c0"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/LearningLocker/xAPI-Recipe-Emitter/zipball/1c8d9474d9214a7b195686e47ddb2b5a553592c0",
+                "reference": "1c8d9474d9214a7b195686e47ddb2b5a553592c0",
+                "shasum": ""
+            },
+            "require": {
+                "rusticisoftware/tincan": "0.12.*"
+            },
+            "require-dev": {
+                "learninglocker/statementfactory": "~0.0",
+                "phpunit/phpunit": "~4.6"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "XREmitter\\": "src/",
+                    "XREmitter\\Tests\\": "tests/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "GPL v3"
+            ],
+            "time": "2015-11-12 09:31:19"
+        },
+        {
+            "name": "rusticisoftware/tincan",
+            "version": "0.12.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/RusticiSoftware/TinCanPHP.git",
+                "reference": "93c1cef7962fbf4ef7b55481fcfaedd71de8924a"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/RusticiSoftware/TinCanPHP/zipball/93c1cef7962fbf4ef7b55481fcfaedd71de8924a",
+                "reference": "93c1cef7962fbf4ef7b55481fcfaedd71de8924a",
+                "shasum": ""
+            },
+            "require": {
+                "php": "~5.4"
+            },
+            "require-dev": {
+                "phpdocumentor/phpdocumentor": "2.*",
+                "phpunit/phpunit": "@stable"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "TinCan\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "Apache-2.0"
+            ],
+            "authors": [
+                {
+                    "name": "Brian J. Miller",
+                    "email": "brian.miller@tincanapi.com",
+                    "role": "Developer"
+                }
+            ],
+            "description": "Tin Can API Library",
+            "homepage": "http://rusticisoftware.github.io/TinCanPHP/",
+            "keywords": [
+                "Experience API",
+                "e-learning",
+                "scorm",
+                "tin can",
+                "tincan",
+                "xAPI"
+            ],
+            "time": "2015-01-15 16:36:29"
+        }
+    ],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "stable",
+    "stability-flags": [],
+    "prefer-stable": false,
+    "prefer-lowest": false,
+    "platform": [],
+    "platform-dev": []
+}
