@@ -24,6 +24,7 @@ use \LogExpander\Controller as moodle_controller;
 use \LogExpander\Repository as moodle_repository;
 use \XREmitter\Controller as xapi_controller;
 use \XREmitter\Repository as xapi_repository;
+use TinCan\LRSInterface;
 
 define('CLI_SCRIPT', 1);
 require_once(__DIR__ . '/../../../config.php');
@@ -38,13 +39,16 @@ $password = '3330d7329edec73f2b544d5541b1016da91ab091';
 $batchsize = 20;
 
 $lrs = new RemoteLRS($endpoint, $version, $username, $password);
-$xapirepo = new xapi_repository($lrs);
 
 // Check connection
 $about = $lrs->about();
 if (!$about->success) {
     die("Unable to connect to server");
 }
+
+echo "xAPI versions: " . implode(', ', $about->content->getVersion()) . "\n";
+
+// Can't use autoloading on old Moodle versions
 
 class BatchController extends xapi_controller {
 
@@ -68,10 +72,51 @@ class BatchController extends xapi_controller {
 
 }
 
-// Initialise repositories
-$moodlecontroller = new moodle_controller(new moodle_repository($DB, $CFG));
-$translatorcontroller = new translator_controller();
-$xapicontroller = new BatchController($xapirepo);
+class StatementGenerator {
+
+    protected $moodlecontroller;
+    protected $translatorcontroller;
+    protected $xapicontroller;
+
+    /**
+     * Create a new generator.
+
+     * @param LRSInterface $lrs the intended target LRS
+     */
+    public function __construct(LRSInterface $lrs) {
+        global $DB, $CFG;
+        // Initialise repositories
+        $this->moodlecontroller = new moodle_controller(new moodle_repository($DB, $CFG));
+        $this->translatorcontroller = new translator_controller();
+        $this->xapicontroller = new BatchController(new xapi_repository($lrs));
+    }
+
+    public function generateStatement(array $event) {
+        $moodleevent = $this->moodlecontroller->createEvent($event);
+
+        if (is_null($moodleevent)) {
+            // This is acceptable - means Moodle event not supported by library
+            return null;
+        }
+
+        $translatorevent = $this->translatorcontroller->createEvent($moodleevent);
+        if (is_null($translatorevent)) {
+            throw new Exception("Unable to create statement");
+        }
+
+        $xapievent = $this->xapicontroller->createEvent($translatorevent);
+
+        if (is_null($xapievent)) {
+            throw new Exception("Unable to create statement");
+        }
+
+        return new Statement($xapievent);
+
+    }
+
+}
+
+$gen = new StatementGenerator($lrs);
 
 // UserLoggedIn recipe
 echo "Processing UserLoggedIn events\n";
@@ -86,26 +131,8 @@ while($batch = $DB->get_records('log', array('module' => 'user', 'action' => 'lo
         $event['courseid'] = 1; // Should be $logrecord->courseid;
         $event['timecreated'] = $logrecord->time;
 
-        // $this->error_log('');
-        // $this->error_log_value('event', $event);
-        $moodleevent = $moodlecontroller->createEvent($event);
-        if (is_null($moodleevent)) {
-            continue;
-        }
-
-        // $this->error_log_value('moodleevent', $moodleevent);
-        $translatorevent = $translatorcontroller->createEvent($moodleevent);
-        if (is_null($translatorevent)) {
-            continue;
-        }
-
-        $xapievent = $xapicontroller->createEvent($translatorevent);
-
-        if (!is_null($xapievent)) {
-            $statements[] = new Statement($xapievent);
-        } else {
-            echo "Unable to create statement\n";
-            print_r($logrecord);
+        if ($statement = $gen->generateStatement($event)) {
+            $statements[] = $statement;
         }
     }
 
@@ -131,26 +158,8 @@ while($batch = $DB->get_records('log', array('module' => 'course', 'action' => '
         $event['courseid'] = $logrecord->course;
         $event['timecreated'] = $logrecord->time;
 
-        // $this->error_log('');
-        // $this->error_log_value('event', $event);
-        $moodleevent = $moodlecontroller->createEvent($event);
-        if (is_null($moodleevent)) {
-            continue;
-        }
-
-        // $this->error_log_value('moodleevent', $moodleevent);
-        $translatorevent = $translatorcontroller->createEvent($moodleevent);
-        if (is_null($translatorevent)) {
-            continue;
-        }
-
-        $xapievent = $xapicontroller->createEvent($translatorevent);
-
-        if (!is_null($xapievent)) {
-            $statements[] = new Statement($xapievent);
-        } else {
-            echo "Unable to create statement\n";
-            print_r($logrecord);
+        if ($statement = $gen->generateStatement($event)) {
+            $statements[] = $statement;
         }
     }
 
@@ -186,23 +195,8 @@ while($batch = $DB->get_records('log', array('action' => 'view'), '', '*', $star
         $event['objectid'] = $mod->instance;
         $event['objecttable'] = $mod->modname;
 
-        $moodleevent = $moodlecontroller->createEvent($event);
-        if (is_null($moodleevent)) {
-            continue;
-        }
-
-        $translatorevent = $translatorcontroller->createEvent($moodleevent);
-        if (is_null($translatorevent)) {
-            continue;
-        }
-
-        $xapievent = $xapicontroller->createEvent($translatorevent);
-
-        if (!is_null($xapievent)) {
-            $statements[] = new Statement($xapievent);
-        } else {
-            echo "Unable to create statement\n";
-            print_r($logrecord);
+        if ($statement = $gen->generateStatement($event)) {
+            $statements[] = $statement;
         }
     }
 
@@ -240,26 +234,8 @@ while($batch = $DB->get_records_select('log', "module = 'assign' AND (action = '
         $event['objectid'] = $submission->id;
         $event['objecttable'] = 'assign_submission';
 
-        // $this->error_log('');
-        // $this->error_log_value('event', $event);
-        $moodleevent = $moodlecontroller->createEvent($event);
-        if (is_null($moodleevent)) {
-            continue;
-        }
-
-        // $this->error_log_value('moodleevent', $moodleevent);
-        $translatorevent = $translatorcontroller->createEvent($moodleevent);
-        if (is_null($translatorevent)) {
-            continue;
-        }
-
-        $xapievent = $xapicontroller->createEvent($translatorevent);
-
-        if (!is_null($xapievent)) {
-            $statements[] = new Statement($xapievent);
-        } else {
-            echo "Unable to create statement\n";
-            print_r($logrecord);
+        if ($statement = $gen->generateStatement($event)) {
+            $statements[] = $statement;
         }
     }
 
@@ -298,26 +274,8 @@ while($batch = $DB->get_records('log', array('module' => 'assign', 'action' => '
         $event['objectid'] = $grade->id;
         $event['objecttable'] = 'assign_grades';
 
-        // $this->error_log('');
-        // $this->error_log_value('event', $event);
-        $moodleevent = $moodlecontroller->createEvent($event);
-        if (is_null($moodleevent)) {
-            continue;
-        }
-
-        // $this->error_log_value('moodleevent', $moodleevent);
-        $translatorevent = $translatorcontroller->createEvent($moodleevent);
-        if (is_null($translatorevent)) {
-            continue;
-        }
-
-        $xapievent = $xapicontroller->createEvent($translatorevent);
-
-        if (!is_null($xapievent)) {
-            $statements[] = new Statement($xapievent);
-        } else {
-            echo "Unable to create statement\n";
-            print_r($logrecord);
+        if ($statement = $gen->generateStatement($event)) {
+            $statements[] = $statement;
         }
     }
 
